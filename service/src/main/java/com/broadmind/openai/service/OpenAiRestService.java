@@ -10,10 +10,12 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
 import okhttp3.OkHttpClient.Builder;
+import okhttp3.Protocol;
 import okhttp3.Request;
 import okhttp3.logging.HttpLoggingInterceptor;
 import okhttp3.logging.HttpLoggingInterceptor.Level;
@@ -53,7 +55,7 @@ public class OpenAiRestService {
     String apiBaseUrl = System.getenv(OpenAiConfiguration.API_BASE_URL);
     apiBaseUrl =
         apiBaseUrl == null ? configuration.getApiBaseUrl(DEFAULT_API_BASE_URL) : apiBaseUrl;
-    
+
     Retrofit retrofit =
         new Retrofit.Builder()
             .baseUrl(apiBaseUrl)
@@ -74,28 +76,33 @@ public class OpenAiRestService {
 
   public static OkHttpClient createHttpClient(OpenAiConfiguration configuration)
       throws IOException {
-    String openaiApiKey = configuration.getOpenaiApiKey();
+    String openaiApiKey = System.getenv(OpenAiConfiguration.OPENAI_API_KEY);
+    openaiApiKey = openaiApiKey == null ? configuration.getOpenaiApiKey() : openaiApiKey;
     if (null == openaiApiKey) {
       throw new IOException("Can not construct service without openai api key!");
     }
     Builder builder = new Builder();
     Boolean httpLogging = configuration.getHttpLogging(false);
     if (httpLogging) {
-      builder.addInterceptor(new HttpLoggingInterceptor().setLevel(Level.BODY));
+      builder.addInterceptor(new HttpLoggingInterceptor().setLevel(Level.BASIC));
     }
+
+    builder.protocols(Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
     builder.connectTimeout(
         configuration.getConnectTimeOut(DEFAULT_CONNECT_TIME_OUT), TimeUnit.SECONDS);
     builder.readTimeout(configuration.getReadTimeOut(DEFAULT_READ_TIME_OUT), TimeUnit.SECONDS);
     builder.writeTimeout(configuration.getWriteTimeOut(DEFAULT_WRITE_TIME_OUT), TimeUnit.SECONDS);
 
     builder.connectionPool(new ConnectionPool(5, 5, TimeUnit.SECONDS));
+
+    final String apiKey = openaiApiKey;
     builder.addInterceptor(
         chain -> {
           Request requestWithHeader =
               chain
                   .request()
                   .newBuilder()
-                  .header("Authorization", String.format("Bearer %s", openaiApiKey))
+                  .header("Authorization", String.format("Bearer %s", apiKey))
                   .build();
 
           return chain.proceed(requestWithHeader);
